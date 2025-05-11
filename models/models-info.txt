@@ -1,2 +1,0 @@
-Please access models from -
-https://huggingface.co/lohi-hugging/Helemet_detection/tree/main

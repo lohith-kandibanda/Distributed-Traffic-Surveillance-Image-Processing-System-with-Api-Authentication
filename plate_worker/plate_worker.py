@@ -12,6 +12,8 @@ import numpy as np
 from io import BytesIO
 from paddleocr import PaddleOCR
 from PIL import Image
+import os
+from datetime import datetime
 
 # ---------------------------
 # Configuration
@@ -22,6 +24,8 @@ PLATE_QUEUE = "plate_queue"
 REDIS_HOST = "redis"
 REDIS_PORT = 6379
 CONFIDENCE_THRESHOLD = 0.6
+ANNOTATED_DIR = "static/annotated"
+os.makedirs(ANNOTATED_DIR, exist_ok=True)
 
 # ---------------------------
 # Initialization
@@ -52,7 +56,8 @@ async def handle_task(message: aio_pika.IncomingMessage):
             frame_data = bytes.fromhex(task['frame_data'])
             frame = np.array(Image.open(BytesIO(frame_data)).convert('RGB'))
 
-            result = process_plate_frame(frame)
+            result, annotated_path = process_plate_frame(frame, parent_id, frame_no)
+            result['annotated_image'] = annotated_path
 
             key = f"{parent_id}:plate:{frame_no}"
             r.set(key, json.dumps(result))
@@ -67,7 +72,7 @@ async def handle_task(message: aio_pika.IncomingMessage):
 # Plate Detection Function
 # ---------------------------
 
-def process_plate_frame(frame):
+def process_plate_frame(frame, task_id, frame_no):
     plates_detected = []
     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
@@ -84,14 +89,21 @@ def process_plate_frame(frame):
                     "confidence": round(confidence, 3),
                     "bbox": [x1, y1, x2, y2]
                 })
+                # Draw
+                cv2.rectangle(frame_bgr, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.putText(frame_bgr, text.strip(), (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
     except Exception as e:
         logger.error(f"❌ OCR failed: {e}")
 
+    annotated_path = os.path.join(ANNOTATED_DIR, f"{task_id}_{frame_no}.jpg")
+    cv2.imwrite(annotated_path, frame_bgr)
+
     return {
         "plates": plates_detected,
-        "plate_count": len(plates_detected)
-    }
+        "plate_count": len(plates_detected),
+        "frame_no": frame_no
+    }, annotated_path
 
 # ---------------------------
 # Wait for RabbitMQ

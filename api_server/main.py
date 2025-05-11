@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.security.api_key import APIKeyHeader
+from fastapi.staticfiles import StaticFiles
 import redis
 import aio_pika
 import uuid
@@ -22,6 +23,8 @@ RATE_LIMIT = 10
 # ---------------------------
 
 app = FastAPI(title="🚦 Distributed Traffic Surveillance API")
+app.mount("/static", StaticFiles(directory="/app/static"), name="static")  # ✅ Serve annotated files
+
 api_key_header = APIKeyHeader(name="X-API-Key")
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 

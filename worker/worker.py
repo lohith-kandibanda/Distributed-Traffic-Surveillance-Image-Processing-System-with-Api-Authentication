@@ -144,7 +144,7 @@ def run_detections(image):
     for det in vehicle_preds.boxes:
         cls = int(det.cls.item())
         name = vehicle_model.model.names[cls]
-        if name in ["car", "motorbike", "truck", "bus", "bicycle"]:
+        if name in ["car", "motorcycle", "truck", "bus", "bicycle"]:
             x1, y1, x2, y2 = map(int, det.xyxy[0].tolist())
             vehicle_boxes.append({"type": name, "bbox": [x1, y1, x2, y2]})
 

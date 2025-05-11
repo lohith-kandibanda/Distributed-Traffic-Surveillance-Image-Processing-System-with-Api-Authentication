@@ -3,98 +3,139 @@ import requests
 import time
 import json
 from PIL import Image
+from io import BytesIO
+from pathlib import Path
+import os
 
 API_URL = "http://api_server:8000"
+LOCAL_ANNOTATED_DIR = "./static/annotated"
 
-st.set_page_config(page_title="Distributed Traffic System", layout="centered")
-st.title("🚦 Distributed Traffic Processing System")
+st.set_page_config(page_title="🚦 Distributed Traffic System", layout="wide")
+st.markdown("""
+    <style>
+        .main {
+            background-color: #0d1117;
+            color: #c9d1d9;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        .stButton > button {
+            background-color: #1f6feb;
+            color: white;
+            border-radius: 8px;
+            padding: 0.5em 1.5em;
+        }
+        .stDownloadButton > button {
+            background-color: #238636;
+            color: white;
+            border-radius: 8px;
+        }
+        .stFileUploader {
+            background: #161b22;
+            padding: 1em;
+            border-radius: 10px;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 st.markdown("""
-Upload a traffic surveillance **video or image**, and the system will:
-- Detect vehicles and their types
-- Extract license plates
-- Detect helmet violations and associate with vehicle plates
-""")
+<h1 style='color:#58a6ff;'>🚦 Distributed Traffic Processing System</h1>
+<p>Upload a traffic surveillance <b>video or image</b>, and the system will:</p>
+<ul>
+  <li>🔍 Detect vehicles and their types</li>
+  <li>🔤 Extract license plates</li>
+  <li>🪖 Detect helmet violations and associate them with vehicle plates</li>
+  <li>📎 Return an annotated result with download support</li>
+</ul>
+""", unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("Upload a Traffic Video/Image (.mp4/.jpg/.png)", type=["mp4", "avi", "mov", "mkv", "jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("📤 Upload a Traffic Video/Image", type=["mp4", "avi", "mov", "mkv", "jpg", "jpeg", "png"])
 
-if uploaded_file is not None:
-    if st.button("Submit File"):
-        st.success("Uploading file... Please wait.")
+if uploaded_file and st.button("🚀 Submit File"):
+    st.info("⏳ Uploading file... Please wait.")
+    file_ext = uploaded_file.name.split(".")[-1].lower()
+    content_type = "video/mp4" if file_ext in ["mp4", "avi", "mov", "mkv"] else "image/jpeg"
+    files = {"file": (uploaded_file.name, uploaded_file, content_type)}
+    headers = {"X-API-Key": "traffic123"}
 
-        file_ext = uploaded_file.name.split(".")[-1].lower()
-        content_type = "video/mp4" if file_ext in ["mp4", "avi", "mov", "mkv"] else "image/jpeg"
+    try:
+        response = requests.post(f"{API_URL}/upload/", files=files, headers=headers)
+        response.raise_for_status()
+        task_id = response.json()["task_id"]
+        st.success(f"✅ Task ID `{task_id}` submitted.")
 
-        files = {"file": (uploaded_file.name, uploaded_file, content_type)}
-        headers = {"X-API-Key": "traffic123"}
+        retries = 0
+        max_retries = 120
+        result = None
 
-        try:
-            response = requests.post(f"{API_URL}/upload/", files=files, headers=headers)
-            response.raise_for_status()
-            task_id = response.json()["task_id"]
-
-            st.info(f"File uploaded! Task ID: {task_id}")
-            st.info("Processing... This may take a minute ⏳")
-
-            while True:
+        with st.spinner("🔄 Processing..."):
+            while retries < max_retries:
                 res = requests.get(f"{API_URL}/result/{task_id}")
                 res_data = res.json()
-
                 if res_data["status"] == "done":
-                    st.success("✅ Processing Complete!")
-                    try:
-                        result = json.loads(res_data["result"]) if isinstance(res_data["result"], str) else res_data["result"]
-                    except Exception as e:
-                        st.error(f"❌ Error parsing result JSON: {e}")
-                        break
+                    result = json.loads(res_data["result"]) if isinstance(res_data["result"], str) else res_data["result"]
+                    st.session_state.result = result
                     break
                 elif res_data["status"] == "not_found":
                     st.error("❌ Task Not Found.")
                     break
-                else:
-                    st.info("⏳ Still Processing...")
-                    time.sleep(5)
+                time.sleep(5)
+                retries += 1
 
-            if not result:
-                st.warning("⚠️ No result data found.")
-                st.stop()
+        if not result:
+            st.error("⏱️ Timeout: Task took too long. Please try again.")
 
-            st.subheader("📊 Summary:")
-            st.write(f"**Total Frames Processed**: {result.get('total_frames_processed', 0)}")
-            st.write(f"**Total Vehicles Detected**: {result.get('vehicle_count', 0)}")
+    except Exception as e:
+        st.error(f"🚫 Error: {e}")
 
-            license_plates = result.get("license_plates", [])
-            unique_plates = set(p.get("plate_text", "") for p in license_plates if isinstance(p, dict))
-            st.write(f"**Unique License Plates Found**: {len(unique_plates)}")
+if "result" in st.session_state:
+    result = st.session_state.result
+    st.markdown("""<h2 style='color:#8b949e;'>📊 Summary:</h2>""", unsafe_allow_html=True)
+    st.write(f"**Total Frames Processed**: {result.get('total_frames_processed', 0)}")
+    total_unique_vehicles = sum(result.get("vehicle_types", {}).values())
+    st.write(f"**Total Unique Vehicles Detected**: {total_unique_vehicles}")
+    st.write(f"**Unique License Plates Found**: {len(result.get('license_plates', []))}")
+    st.write(f"**Helmet Violations**: {len(result.get('helmet_violations', []))}")
 
-            helmet_violations = result.get("helmet_violations", [])
-            st.write(f"**Helmet Violations**: {len(helmet_violations)}")
+    st.markdown("""<h3 style='color:#d2a8ff;'>🚗 Vehicle Types:</h3>""", unsafe_allow_html=True)
+    for vtype, count in result.get("vehicle_types", {}).items():
+        st.markdown(f"<span style='color:#58a6ff'>• {vtype}:</span> {count}", unsafe_allow_html=True)
 
-            st.subheader("🚗 Vehicle Types:")
-            for v in result.get("vehicles", []):
-                if isinstance(v, dict):
-                    st.write(f"- {v.get('type', 'Unknown')} at Box {v.get('bbox', [])}")
+    st.markdown("""<h3 style='color:#ff7b72;'>🔴 Helmet Violations:</h3>""", unsafe_allow_html=True)
+    helmet_violations = result.get("helmet_violations", [])
+    if "show_helmet" not in st.session_state:
+        st.session_state.show_helmet = False
+    st.session_state.show_helmet = st.checkbox("👷 Show Only Helmet Violations", value=st.session_state.show_helmet)
+    if st.session_state.show_helmet:
+        if helmet_violations:
+            for v in helmet_violations:
+                st.write(f"- ❌ No Helmet | Plate: {v.get('plate')} | Box: {v.get('bbox')}")
+        else:
+            st.success("✅ No Helmet Violations Detected")
+    else:
+        st.write(f"Total: {len(helmet_violations)} (Toggle above to filter list)")
 
-            st.subheader("🔵 License Plates:")
-            for plate in license_plates:
-                if isinstance(plate, dict):
-                    st.write(f"- {plate.get('plate_text', 'Unknown')} (Conf: {plate.get('confidence', '?')})")
+    st.markdown("""<h3 style='color:#79c0ff;'>📎 Annotated Output:</h3>""", unsafe_allow_html=True)
+    annotated_url = result.get("annotated_url", "")
+    file_name = Path(annotated_url).name
+    local_file_path = os.path.join(LOCAL_ANNOTATED_DIR, file_name)
 
-            st.subheader("🔴 Helmet Violations with Plate:")
-            if helmet_violations:
-                for item in helmet_violations:
-                    if isinstance(item, dict):
-                        plate_text = item.get("plate_text", "Unknown")
-                        bbox = item.get("bbox", [])
-                        st.write(f"- ❌ No Helmet | Plate: {plate_text} | Box: {bbox}")
-                    else:
-                        st.write(f"- ❌ No Helmet | {item}")
-            else:
-                st.info("✅ No Helmet Violations Detected!")
+    if result["type"] == "image":
+        try:
+            image_res = requests.get(annotated_url)
+            image = Image.open(BytesIO(image_res.content))
+            st.image(image, caption="🖼️ Annotated Image", use_container_width=True)
+        except Exception:
+            st.warning("⚠️ Unable to load image preview.")
+    else:
+        st.video(annotated_url)
 
-            if "annotated_video_url" in result:
-                st.subheader("📹 Annotated Result Video:")
-                st.video(result["annotated_video_url"])
-
-        except Exception as e:
-            st.error(f"🚫 Error: {e}")
+    if os.path.exists(local_file_path):
+        with open(local_file_path, "rb") as f:
+            st.download_button(
+                label="⬇️ Download Annotated Output",
+                data=f,
+                file_name=file_name,
+                mime="video/mp4" if file_name.endswith(".mp4") else "image/jpeg"
+            )
+    else:
+        st.warning("⚠️ Annotated file not found on server.")

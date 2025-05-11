@@ -6,6 +6,9 @@ services:
       context: ./api_server
     ports:
       - "8000:8000"
+    volumes:
+      - ./static:/app/static
+      # Shared volume
     depends_on:
       - rabbitmq
       - redis
@@ -15,6 +18,9 @@ services:
   master_worker:
     build:
       context: ./master_worker
+    volumes:
+      - ./static:/app/static
+      # Same shared volume
     depends_on:
       - rabbitmq
       - redis
@@ -51,6 +57,9 @@ services:
       context: ./frontend
     ports:
       - "8501:8501"
+    volumes:
+      - ./static:/app/static
+      # Streamlit also needs access to annotated media
     depends_on:
       - api_server
     restart: always
