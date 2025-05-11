@@ -1,0 +1,45 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install required system packages for OpenCV, OCR, and general usage
+RUN apt-get update && apt-get install -y \
+    libglib2.0-0 \
+    libsm6 \
+    libxrender1 \
+    libxext6 \
+    ffmpeg \
+    curl \
+    git \
+    build-essential \
+    libgl1-mesa-glx \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and setuptools
+RUN pip install --upgrade pip setuptools wheel
+
+# Install PyTorch (CPU-only)
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Install all necessary Python libraries
+RUN pip install \
+    opencv-python-headless \
+    easyocr \
+    numpy \
+    fastapi \
+    uvicorn \
+    pika \
+    redis \
+    aio_pika \
+    python-multipart \
+    requests \
+    aiofiles \
+    python-jose \
+    passlib[bcrypt] \
+    python-dotenv \
+    streamlit \
+    paddleocr \
+    paddlepaddle \
+    ultralytics
+
+CMD ["bash"]

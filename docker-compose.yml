@@ -1,0 +1,76 @@
+version: "3.8"
+
+services:
+  api_server:
+    build:
+      context: ./api_server
+    ports:
+      - "8000:8000"
+    depends_on:
+      - rabbitmq
+      - redis
+      - master_worker
+    restart: always
+
+  master_worker:
+    build:
+      context: ./master_worker
+    depends_on:
+      - rabbitmq
+      - redis
+    restart: always
+
+  vehicle_worker:
+    build:
+      context: .
+      dockerfile: vehicle_worker/Dockerfile
+    depends_on:
+      - rabbitmq
+      - redis
+    restart: always
+
+  plate_worker:
+    build:
+      context: ./plate_worker
+    depends_on:
+      - rabbitmq
+      - redis
+    restart: always
+
+  helmet_worker:
+    build:
+      context: .
+      dockerfile: helmet_worker/Dockerfile
+    depends_on:
+      - rabbitmq
+      - redis
+    restart: always
+
+  streamlit_ui:
+    build:
+      context: ./frontend
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api_server
+    restart: always
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    restart: always
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    restart: always
+
+networks:
+  default:
+    name: distributed_traffic_network
