@@ -144,7 +144,7 @@ async def process_input(task_id, file_bytes, task_type):
             annotated_path,
             cv2.VideoWriter_fourcc(*'mp4v'),
             fps,
-            (width, height + 100)
+            (width + 100, height + 100)
         )
         for frame_no, frame in full_frames:
             detections = frame_detections.get(frame_no, {})
@@ -196,34 +196,43 @@ async def process_input(task_id, file_bytes, task_type):
     }
 
 
+import cv2
+
+def draw_label_with_bg(image, text, x, y, font=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.5, text_color=(0, 0, 0), bg_color=(0, 255, 0), thickness=1, padding=4):
+    text_size, _ = cv2.getTextSize(text, font, font_scale, thickness)
+    text_w, text_h = text_size
+    cv2.rectangle(image, (x, y - text_h - padding), (x + text_w + padding*2, y), bg_color, -1)
+    cv2.putText(image, text, (x + padding, y - padding), font, font_scale, text_color, thickness, cv2.LINE_AA)
+
 def draw_annotations(frame, vehicles, plates, helmet_violations, frame_no):
     top_pad = 50
     bottom_pad = 50
-    padded_frame = cv2.copyMakeBorder(frame, top_pad, bottom_pad, 0, 0, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+    left_pad = 50   # add left padding
+    right_pad = 50  # add right padding
 
-    cv2.putText(padded_frame, f"Frame {frame_no}", (10, top_pad - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+    padded_frame = cv2.copyMakeBorder(
+        frame, top_pad, bottom_pad, left_pad, right_pad,
+        cv2.BORDER_CONSTANT, value=(0, 0, 0)
+    )
+
+    # Frame number label
+    draw_label_with_bg(padded_frame, f"Frame {frame_no}", x=10 + left_pad, y=top_pad - 10, bg_color=(255, 255, 0))
 
     for v in vehicles:
-        x1, y1, x2, y2 = v["bbox"]
-        y1 += top_pad
-        y2 += top_pad
+        x1, y1, x2, y2 = [coord + left_pad if i % 2 == 0 else coord + top_pad for i, coord in enumerate(v["bbox"])]
         cv2.rectangle(padded_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(padded_frame, f"Vehicle: {v['type']}", (x1, max(y1 - 10, top_pad)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        draw_label_with_bg(padded_frame, f"Vehicle: {v['type']}", x1, max(y1 - 5, top_pad))
 
     for p in plates:
-        x1, y1, x2, y2 = p["bbox"]
-        y1 += top_pad
-        y2 += top_pad
+        x1, y1, x2, y2 = [coord + left_pad if i % 2 == 0 else coord + top_pad for i, coord in enumerate(p["bbox"])]
         cv2.rectangle(padded_frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
-        cv2.putText(padded_frame, f"Plate: {p['plate_text']}", (x1, y2 + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        draw_label_with_bg(padded_frame, f"Plate: {p['plate_text']}", x1, y2 + 20, bg_color=(0, 255, 255))
 
     for hv in helmet_violations:
-        x1, y1, x2, y2 = hv["bbox"]
-        y1 += top_pad
-        y2 += top_pad
+        x1, y1, x2, y2 = [coord + left_pad if i % 2 == 0 else coord + top_pad for i, coord in enumerate(hv["bbox"])]
         cv2.rectangle(padded_frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
         label_y = y1 - 10 if y1 - 10 > top_pad else y2 + 20
-        cv2.putText(padded_frame, "No Helmet", (x1, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+        draw_label_with_bg(padded_frame, "No Helmet", x1, label_y, bg_color=(0, 0, 255))
 
     return padded_frame
 
